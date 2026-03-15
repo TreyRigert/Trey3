@@ -131,7 +131,7 @@
     let intervalId = null;
     let elapsedSeconds = 0;
     let nextAlertAt = 60;
-    let nextGap = 30;
+    let nextGap = 10;
     let wakeLock = null;
 
     // ── Wake Lock ──────────────────────────────────────────────────────────
@@ -207,7 +207,7 @@
       if (elapsedSeconds === nextAlertAt) {
         triggerAlert();
         nextAlertAt += nextGap;
-        nextGap = nextGap === 30 ? 60 : 30;
+        nextGap = nextGap === 10 ? 60 : 10;
       }
       updateDisplay();
     }
@@ -221,7 +221,7 @@
 
       elapsedSeconds = 0;
       nextAlertAt = 60;
-      nextGap = 30;
+      nextGap = 10;
 
       document.getElementById('start-btn').disabled = true;
       document.getElementById('stop-btn').disabled = false;
