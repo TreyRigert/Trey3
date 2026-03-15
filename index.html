@@ -128,18 +128,25 @@
     let nextGap = 30;      // after first beep, next gap is 30 s
 
     // ── Audio ──────────────────────────────────────────────────────────────
-    function ensureAudioContext() {
+    // iOS Safari requires a silent buffer played synchronously within a user
+    // gesture to unlock the AudioContext before any future sounds will work.
+    function unlockAudio() {
       if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       }
-      // iOS requires resume after a user gesture
       if (audioCtx.state === 'suspended') {
         audioCtx.resume();
       }
+      // Play a one-sample silent buffer — the iOS unlock trick
+      const buf = audioCtx.createBuffer(1, 1, 22050);
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(audioCtx.destination);
+      src.start(0);
     }
 
     function playTone() {
-      ensureAudioContext();
+      if (!audioCtx) return;
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
 
@@ -149,9 +156,9 @@
       osc.type = 'sine';
       osc.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
 
-      gain.gain.setValueAtTime(0, audioCtx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.8, audioCtx.currentTime + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.8);
+      // Start at full volume and decay — avoid starting from 0 on iOS
+      gain.gain.setValueAtTime(1.0, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.8);
 
       osc.start(audioCtx.currentTime);
       osc.stop(audioCtx.currentTime + 0.85);
@@ -198,8 +205,8 @@
       nextBeepAt = 60;
       nextGap = 30;
 
-      // iOS: must resume AudioContext from a user gesture
-      ensureAudioContext();
+      // Unlock audio synchronously within the tap gesture (required by iOS)
+      unlockAudio();
 
       document.getElementById('start-btn').disabled = true;
       document.getElementById('stop-btn').disabled = false;
