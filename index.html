@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Workout Timer</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: #000;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+      gap: 40px;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #fff;
+    }
+
+    #timer-display {
+      font-size: 5rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 4px;
+      color: #fff;
+    }
+
+    #next-beep {
+      font-size: 1.2rem;
+      color: #aaa;
+      min-height: 1.5em;
+      text-align: center;
+    }
+
+    .buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      width: 100%;
+      max-width: 340px;
+    }
+
+    button {
+      width: 100%;
+      padding: 32px 20px;
+      border: none;
+      border-radius: 20px;
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 0.1s, opacity 0.1s;
+    }
+
+    button:active {
+      transform: scale(0.96);
+      opacity: 0.85;
+    }
+
+    #start-btn {
+      background: #00c853;
+      color: #000;
+    }
+
+    #stop-btn {
+      background: #d50000;
+      color: #fff;
+    }
+
+    button:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    button:disabled:active {
+      transform: none;
+    }
+
+    #status {
+      font-size: 1rem;
+      color: #888;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Workout Timer</h1>
+
+  <div id="timer-display">0:00</div>
+
+  <div id="next-beep"></div>
+
+  <div class="buttons">
+    <button id="start-btn" onclick="startTimer()">START</button>
+    <button id="stop-btn" onclick="stopTimer()" disabled>STOP</button>
+  </div>
+
+  <div id="status"></div>
+
+  <script>
+    // ── State ──────────────────────────────────────────────────────────────
+    let audioCtx = null;
+    let intervalId = null;
+    let elapsedSeconds = 0;
+
+    // Tone schedule: alternating 60s and 30s gaps, starting with 60s.
+    // beepAt[i] = cumulative second at which beep i fires
+    // We generate them on the fly.
+    let nextBeepAt = 60;   // first beep at 60 s
+    let nextGap = 30;      // after first beep, next gap is 30 s
+
+    // ── Audio ──────────────────────────────────────────────────────────────
+    function ensureAudioContext() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      // iOS requires resume after a user gesture
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function playTone() {
+      ensureAudioContext();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
+
+      gain.gain.setValueAtTime(0, audioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.8, audioCtx.currentTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.8);
+
+      osc.start(audioCtx.currentTime);
+      osc.stop(audioCtx.currentTime + 0.85);
+    }
+
+    // ── Display helpers ────────────────────────────────────────────────────
+    function formatTime(s) {
+      const m = Math.floor(s / 60);
+      const sec = s % 60;
+      return m + ':' + String(sec).padStart(2, '0');
+    }
+
+    function updateDisplay() {
+      document.getElementById('timer-display').textContent = formatTime(elapsedSeconds);
+
+      const remaining = nextBeepAt - elapsedSeconds;
+      if (remaining > 0) {
+        document.getElementById('next-beep').textContent =
+          'Next beep in ' + remaining + 's';
+      } else {
+        document.getElementById('next-beep').textContent = '';
+      }
+    }
+
+    // ── Timer logic ────────────────────────────────────────────────────────
+    function tick() {
+      elapsedSeconds++;
+      updateDisplay();
+
+      if (elapsedSeconds === nextBeepAt) {
+        playTone();
+        // Schedule next beep: alternate 30 ↔ 60
+        nextBeepAt += nextGap;
+        nextGap = nextGap === 30 ? 60 : 30;
+        updateDisplay();
+      }
+    }
+
+    function startTimer() {
+      if (intervalId !== null) return;
+
+      // Reset
+      elapsedSeconds = 0;
+      nextBeepAt = 60;
+      nextGap = 30;
+
+      // iOS: must resume AudioContext from a user gesture
+      ensureAudioContext();
+
+      document.getElementById('start-btn').disabled = true;
+      document.getElementById('stop-btn').disabled = false;
+      document.getElementById('status').textContent = 'Running…';
+      updateDisplay();
+
+      intervalId = setInterval(tick, 1000);
+    }
+
+    function stopTimer() {
+      if (intervalId === null) return;
+      clearInterval(intervalId);
+      intervalId = null;
+
+      document.getElementById('start-btn').disabled = false;
+      document.getElementById('stop-btn').disabled = true;
+      document.getElementById('status').textContent = 'Stopped at ' + formatTime(elapsedSeconds);
+      document.getElementById('next-beep').textContent = '';
+    }
+  </script>
+
+</body>
+</html>
