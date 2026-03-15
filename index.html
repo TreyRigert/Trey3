@@ -120,48 +120,48 @@
     let audioCtx = null;
     let intervalId = null;
     let elapsedSeconds = 0;
-
-    // Tone schedule: alternating 60s and 30s gaps, starting with 60s.
-    // beepAt[i] = cumulative second at which beep i fires
-    // We generate them on the fly.
-    let nextBeepAt = 60;   // first beep at 60 s
-    let nextGap = 30;      // after first beep, next gap is 30 s
+    let nextBeepAt = 60;
+    let nextGap = 30;
+    let scheduledNodes = []; // track nodes so we can cancel on stop
 
     // ── Audio ──────────────────────────────────────────────────────────────
-    // iOS Safari requires a silent buffer played synchronously within a user
-    // gesture to unlock the AudioContext before any future sounds will work.
-    function unlockAudio() {
-      if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      }
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-      }
-      // Play a one-sample silent buffer — the iOS unlock trick
-      const buf = audioCtx.createBuffer(1, 1, 22050);
-      const src = audioCtx.createBufferSource();
-      src.buffer = buf;
-      src.connect(audioCtx.destination);
-      src.start(0);
-    }
-
-    function playTone() {
-      if (!audioCtx) return;
+    // Schedule a tone at a specific AudioContext time (absolute, not relative).
+    // All tones are scheduled upfront within the START tap handler — this is
+    // the only reliable way to get audio working on iOS Safari, which blocks
+    // sounds triggered from setInterval/setTimeout callbacks.
+    function scheduleTone(when) {
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
-
       osc.connect(gain);
       gain.connect(audioCtx.destination);
 
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
+      osc.frequency.setValueAtTime(880, when);
+      gain.gain.setValueAtTime(1.0, when);
+      gain.gain.exponentialRampToValueAtTime(0.01, when + 0.8);
 
-      // Start at full volume and decay — avoid starting from 0 on iOS
-      gain.gain.setValueAtTime(1.0, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.8);
+      osc.start(when);
+      osc.stop(when + 0.85);
+      scheduledNodes.push(osc);
+    }
 
-      osc.start(audioCtx.currentTime);
-      osc.stop(audioCtx.currentTime + 0.85);
+    function scheduleAllTones(startedAt) {
+      // Schedule tones for up to 2 hours using the 60s/30s/60s/30s pattern
+      let offset = 60;
+      let gap = 30;
+      const maxSeconds = 7200;
+      while (offset <= maxSeconds) {
+        scheduleTone(startedAt + offset);
+        offset += gap;
+        gap = gap === 30 ? 60 : 30;
+      }
+    }
+
+    function cancelAllTones() {
+      scheduledNodes.forEach(osc => {
+        try { osc.stop(0); } catch (e) {}
+      });
+      scheduledNodes = [];
     }
 
     // ── Display helpers ────────────────────────────────────────────────────
@@ -173,40 +173,38 @@
 
     function updateDisplay() {
       document.getElementById('timer-display').textContent = formatTime(elapsedSeconds);
-
       const remaining = nextBeepAt - elapsedSeconds;
-      if (remaining > 0) {
-        document.getElementById('next-beep').textContent =
-          'Next beep in ' + remaining + 's';
-      } else {
-        document.getElementById('next-beep').textContent = '';
-      }
+      document.getElementById('next-beep').textContent =
+        remaining > 0 ? 'Next beep in ' + remaining + 's' : '';
     }
 
     // ── Timer logic ────────────────────────────────────────────────────────
     function tick() {
       elapsedSeconds++;
-      updateDisplay();
-
       if (elapsedSeconds === nextBeepAt) {
-        playTone();
-        // Schedule next beep: alternate 30 ↔ 60
         nextBeepAt += nextGap;
         nextGap = nextGap === 30 ? 60 : 30;
-        updateDisplay();
       }
+      updateDisplay();
     }
 
     function startTimer() {
       if (intervalId !== null) return;
 
-      // Reset
+      // Create AudioContext synchronously within the tap gesture
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      audioCtx.resume();
+
+      // Schedule ALL tones upfront from within this gesture handler.
+      // iOS Safari will honour these even after the page sits idle.
+      const startedAt = audioCtx.currentTime;
+      scheduleAllTones(startedAt);
+
       elapsedSeconds = 0;
       nextBeepAt = 60;
       nextGap = 30;
-
-      // Unlock audio synchronously within the tap gesture (required by iOS)
-      unlockAudio();
 
       document.getElementById('start-btn').disabled = true;
       document.getElementById('stop-btn').disabled = false;
@@ -220,6 +218,7 @@
       if (intervalId === null) return;
       clearInterval(intervalId);
       intervalId = null;
+      cancelAllTones();
 
       document.getElementById('start-btn').disabled = false;
       document.getElementById('stop-btn').disabled = true;
