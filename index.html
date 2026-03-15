@@ -132,6 +132,27 @@
     let elapsedSeconds = 0;
     let nextAlertAt = 60;
     let nextGap = 30;
+    let wakeLock = null;
+
+    // ── Wake Lock ──────────────────────────────────────────────────────────
+    async function requestWakeLock() {
+      if (!('wakeLock' in navigator)) return;
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+      } catch (e) {}
+    }
+
+    function releaseWakeLock() {
+      if (wakeLock) { wakeLock.release(); wakeLock = null; }
+    }
+
+    // Re-acquire wake lock if the page becomes visible again (e.g. after
+    // the user switches back from another app mid-workout).
+    document.addEventListener('visibilitychange', () => {
+      if (intervalId !== null && document.visibilityState === 'visible') {
+        requestWakeLock();
+      }
+    });
 
     // ── Speech ─────────────────────────────────────────────────────────────
     // Prime speechSynthesis inside the tap gesture so iOS allows later calls.
@@ -196,6 +217,7 @@
 
       // Must prime speech inside the gesture handler
       primeSpeech();
+      requestWakeLock();
 
       elapsedSeconds = 0;
       nextAlertAt = 60;
@@ -214,6 +236,7 @@
       clearInterval(intervalId);
       intervalId = null;
       speechSynthesis.cancel();
+      releaseWakeLock();
 
       document.getElementById('start-btn').disabled = false;
       document.getElementById('stop-btn').disabled = true;
