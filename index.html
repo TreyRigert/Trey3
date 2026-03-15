@@ -29,7 +29,6 @@
       font-weight: 700;
       letter-spacing: 2px;
       text-transform: uppercase;
-      color: #fff;
     }
 
     #timer-display {
@@ -37,7 +36,6 @@
       font-weight: 700;
       font-variant-numeric: tabular-nums;
       letter-spacing: 4px;
-      color: #fff;
     }
 
     #next-beep {
@@ -98,14 +96,28 @@
       color: #888;
       min-height: 1.2em;
     }
+
+    /* Flash overlay */
+    #flash {
+      position: fixed;
+      inset: 0;
+      background: #fff;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.05s ease-in;
+    }
+
+    #flash.active {
+      opacity: 1;
+    }
   </style>
 </head>
 <body>
 
+  <div id="flash"></div>
+
   <h1>Workout Timer</h1>
-
   <div id="timer-display">0:00</div>
-
   <div id="next-beep"></div>
 
   <div class="buttons">
@@ -116,55 +128,45 @@
   <div id="status"></div>
 
   <script>
-    // ── State ──────────────────────────────────────────────────────────────
-    let audioCtx = null;
     let intervalId = null;
     let elapsedSeconds = 0;
-    let nextBeepAt = 60;
+    let nextAlertAt = 60;
     let nextGap = 30;
-    let scheduledNodes = []; // track nodes so we can cancel on stop
 
-    // ── Audio ──────────────────────────────────────────────────────────────
-    // Schedule a tone at a specific AudioContext time (absolute, not relative).
-    // All tones are scheduled upfront within the START tap handler — this is
-    // the only reliable way to get audio working on iOS Safari, which blocks
-    // sounds triggered from setInterval/setTimeout callbacks.
-    function scheduleTone(when) {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(880, when);
-      gain.gain.setValueAtTime(1.0, when);
-      gain.gain.exponentialRampToValueAtTime(0.01, when + 0.8);
-
-      osc.start(when);
-      osc.stop(when + 0.85);
-      scheduledNodes.push(osc);
+    // ── Speech ─────────────────────────────────────────────────────────────
+    // Prime speechSynthesis inside the tap gesture so iOS allows later calls.
+    function primeSpeech() {
+      if (!window.speechSynthesis) return;
+      const u = new SpeechSynthesisUtterance('');
+      u.volume = 0;
+      speechSynthesis.speak(u);
     }
 
-    function scheduleAllTones(startedAt) {
-      // Schedule tones for up to 2 hours using the 60s/30s/60s/30s pattern
-      let offset = 60;
-      let gap = 30;
-      const maxSeconds = 7200;
-      while (offset <= maxSeconds) {
-        scheduleTone(startedAt + offset);
-        offset += gap;
-        gap = gap === 30 ? 60 : 30;
-      }
+    function speak(text) {
+      if (!window.speechSynthesis) return;
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'en-US';
+      u.rate = 1.0;
+      u.pitch = 1.0;
+      u.volume = 1.0;
+      speechSynthesis.speak(u);
     }
 
-    function cancelAllTones() {
-      scheduledNodes.forEach(osc => {
-        try { osc.stop(0); } catch (e) {}
-      });
-      scheduledNodes = [];
+    // ── Flash ──────────────────────────────────────────────────────────────
+    function flash() {
+      const el = document.getElementById('flash');
+      el.classList.add('active');
+      setTimeout(() => el.classList.remove('active'), 300);
     }
 
-    // ── Display helpers ────────────────────────────────────────────────────
+    // ── Alert (speech + flash together) ───────────────────────────────────
+    function triggerAlert() {
+      speak('interval');
+      flash();
+    }
+
+    // ── Display ────────────────────────────────────────────────────────────
     function formatTime(s) {
       const m = Math.floor(s / 60);
       const sec = s % 60;
@@ -173,16 +175,17 @@
 
     function updateDisplay() {
       document.getElementById('timer-display').textContent = formatTime(elapsedSeconds);
-      const remaining = nextBeepAt - elapsedSeconds;
+      const remaining = nextAlertAt - elapsedSeconds;
       document.getElementById('next-beep').textContent =
-        remaining > 0 ? 'Next beep in ' + remaining + 's' : '';
+        remaining > 0 ? 'Next alert in ' + remaining + 's' : '';
     }
 
-    // ── Timer logic ────────────────────────────────────────────────────────
+    // ── Timer ──────────────────────────────────────────────────────────────
     function tick() {
       elapsedSeconds++;
-      if (elapsedSeconds === nextBeepAt) {
-        nextBeepAt += nextGap;
+      if (elapsedSeconds === nextAlertAt) {
+        triggerAlert();
+        nextAlertAt += nextGap;
         nextGap = nextGap === 30 ? 60 : 30;
       }
       updateDisplay();
@@ -191,19 +194,11 @@
     function startTimer() {
       if (intervalId !== null) return;
 
-      // Create AudioContext synchronously within the tap gesture
-      if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      }
-      audioCtx.resume();
-
-      // Schedule ALL tones upfront from within this gesture handler.
-      // iOS Safari will honour these even after the page sits idle.
-      const startedAt = audioCtx.currentTime;
-      scheduleAllTones(startedAt);
+      // Must prime speech inside the gesture handler
+      primeSpeech();
 
       elapsedSeconds = 0;
-      nextBeepAt = 60;
+      nextAlertAt = 60;
       nextGap = 30;
 
       document.getElementById('start-btn').disabled = true;
@@ -218,7 +213,7 @@
       if (intervalId === null) return;
       clearInterval(intervalId);
       intervalId = null;
-      cancelAllTones();
+      speechSynthesis.cancel();
 
       document.getElementById('start-btn').disabled = false;
       document.getElementById('stop-btn').disabled = true;
