@@ -39,10 +39,12 @@
     }
 
     #next-beep {
-      font-size: 1.2rem;
+      font-size: 2.8rem;
+      font-weight: 700;
       color: #aaa;
       min-height: 1.5em;
       text-align: center;
+      font-variant-numeric: tabular-nums;
     }
 
     .buttons {
@@ -131,7 +133,7 @@
     let intervalId = null;
     let elapsedSeconds = 0;
     let nextAlertAt = 60;
-    let nextGap = 10;
+    let nextGap = 15;
     let wakeLock = null;
 
     // ── Wake Lock ──────────────────────────────────────────────────────────
@@ -207,7 +209,7 @@
       if (elapsedSeconds === nextAlertAt) {
         triggerAlert();
         nextAlertAt += nextGap;
-        nextGap = nextGap === 10 ? 60 : 10;
+        nextGap = nextGap === 15 ? 60 : 15;
       }
       updateDisplay();
     }
@@ -221,7 +223,7 @@
 
       elapsedSeconds = 0;
       nextAlertAt = 60;
-      nextGap = 10;
+      nextGap = 15;
 
       document.getElementById('start-btn').disabled = true;
       document.getElementById('stop-btn').disabled = false;
