@@ -39,12 +39,13 @@
     }
 
     #next-beep {
-      font-size: 2.8rem;
+      font-size: 5rem;
       font-weight: 700;
-      color: #aaa;
+      color: #fff;
       min-height: 1.5em;
       text-align: center;
       font-variant-numeric: tabular-nums;
+      letter-spacing: 4px;
     }
 
     .buttons {
@@ -57,10 +58,10 @@
 
     button {
       width: 100%;
-      padding: 32px 20px;
+      padding: 16px 20px;
       border: none;
-      border-radius: 20px;
-      font-size: 2rem;
+      border-radius: 14px;
+      font-size: 1.3rem;
       font-weight: 800;
       letter-spacing: 2px;
       text-transform: uppercase;
@@ -200,7 +201,7 @@
       document.getElementById('timer-display').textContent = formatTime(elapsedSeconds);
       const remaining = nextAlertAt - elapsedSeconds;
       document.getElementById('next-beep').textContent =
-        remaining > 0 ? 'Next alert in ' + remaining + 's' : '';
+        remaining > 0 ? remaining + 's' : '';
     }
 
     // ── Timer ──────────────────────────────────────────────────────────────
